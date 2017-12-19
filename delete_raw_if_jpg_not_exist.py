@@ -5,11 +5,14 @@
 #              For each file it looks in upper directory if the JPG exist
 #              if not, it move the RAW to trash.
 #
-# Original Author:  Thomas Dahlmann and Renaud Boitouzet ( https://photo.stackexchange.com/questions/16401/how-to-delete-jpg-files-but-only-if-the-matching-raw-file-exists/49377#49377 )
+# Huge modifications of a script from Thomas Dahlmann and Renaud Boitouzet ( https://photo.stackexchange.com/questions/16401/how-to-delete-jpg-files-but-only-if-the-matching-raw-file-exists/49377#49377 )
 #
 # WARNING if you use raw only sometime : they will be put in "to_delete"
 # one way  to avoid it is to launch the script before deleting jpg,
 # then renaming "to_delete" to "raw_only"
+#
+# Tested under Ubuntu and Windows
+#
 #
 import os
 import glob
@@ -47,12 +50,12 @@ move raw to trash  ./17.12.25 - Real Santa3.crw
 
 '''
 
-# define waste basket directory here. Include trainling slash or backslash.
+# Define directory to move files
 to_delete_folder = "./to_delete"
 jpg_only_folder = "../jpg_only"
 
-# Define your file extensions here, case is sensitive.
-raw_pattern = "[dcCDrR][aAnrNR][GWg2w]" # dng, crw, cr2, raw
+# Define your file extensions, case is sensitive.
+raw_pattern = "[dcCDrR][wWaAnrNR][GWg2w]" # dng, crw, cr2, raw, rw2
 jpg_pattern = "[jJ][pP][Gg]" # jpg
 
 def move_inexisting_file(first_list, second_list, pattern, destination_dir):
@@ -72,6 +75,7 @@ def move_inexisting_file(first_list, second_list, pattern, destination_dir):
                 if not os.path.exists(destination_dir):
                     os.makedirs(destination_dir)
                 os.rename(f, destination_file)
+
 def main(argv):
     global dry_run
     dry_run = True
@@ -87,8 +91,6 @@ def main(argv):
             sys.exit()
         elif opt == '-m':
          dry_run = False
-
-
     rawdir = os.curdir + "/*." + raw_pattern
     jpgdir = os.curdir + "/../*." + jpg_pattern
     raw_list = glob.glob(rawdir)
