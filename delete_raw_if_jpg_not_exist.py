@@ -14,13 +14,16 @@
 import os
 import glob
 import re
+import sys
+import getopt
 
 '''
 How to test it :
+rm -r test_folder
 mkdir test_folder
 touch test_folder/random_file.txt
 mkdir test_folder/raw
-touch test_folder/picture.jpg
+touch test_folder/picture.jPg
 touch "test_folder/17.12.25 - Real Santa.jpg"
 touch "test_folder/17.12.25 - Real Santa2.JPG"
 touch "test_folder/17.12.25 - Fake Santa.jpg"
@@ -31,106 +34,75 @@ touch "test_folder/raw/17.12.25 - Real Santa3.crw"
 => Launch the script in "raw" folder.
 Attended result :
 "17.12.25 - Real Santa3.crw" is moved to "to_delete"
-We are alerted than "17.12.25 - Fake Santa2.JPG" has no raw image and we find it in "jpg_only"
+We are alerted than "17.12.25 - Fake Santa2.JPG", "picture.jPg" and "17.12.25 - Fake Santa.jpg" has no raw image and we find it in "jpg_only"
 JPG with raw are moved in
 File than are not raw or jpg are moved to "jpg_camera"
+
+jpg without raw :  ./../17.12.25 - Fake Santa.jpg
+jpg without raw :  ./../17.12.25 - Fake Santa2.JPG
+jpg without raw :  ./../picture.jpg
+# Scan the RAW to delete the one without jpg
+move raw to trash  ./17.12.25 - Real Santa3.crw
+
+
 '''
 
-
-# define your file extensions here, case is ignored.
-# Please start with a dot.
-# multiple raw extensions allowed, single jpg extension only
-raw_extensions = (".Dng", ".cR2", ".nef", ".crw")
-jpg_extension = ".jPg"
-
 # define waste basket directory here. Include trainling slash or backslash.
-# Windows : waste_dir = "C:\path\to\waste\"
-waste_dir = "./to_delete/"
+to_delete_folder = "./to_delete"
+jpg_only_folder = "../jpg_only"
 
-# find files
-def locate(folder, extensions):
-    '''Locate files in directory with given extensions'''
-    for filename in os.listdir(folder):
-        if filename.endswith(extensions):
-            yield os.path.join(folder, filename)
+# Define your file extensions here, case is sensitive.
+raw_pattern = "[dcCDrR][aAnrNR][GWg2w]" # dng, crw, cr2, raw
+jpg_pattern = "[jJ][pP][Gg]" # jpg
 
-# make waste basket dir
-if not os.path.exists(waste_dir):
-    os.makedirs(waste_dir)
-
-# Make search case insensitive
-raw_ext = tuple(map(str.lower,raw_extensions)) + tuple(map(str.upper,raw_extensions))
-jpg_ext = (jpg_extension.lower(), jpg_extension.upper())
-
-
-
-
-basedir = os.curdir + "/*.[dcCD][nrNR][GWg2w]"
-raw_list = glob.glob(basedir)
-jpg_list = glob.glob(os.curdir + "/../*.[jJ][pP][Gg]")
-#print(jpg_list)
-
-#TODO: Scan the jpg to find the one without raw and put it in "jpg_only"
-
-for f in jpg_list:
-    print("raw : ", f)
-    base_name = os.path.basename(f)
-    base_name = os.path.splitext(base_name)[0]
-    #print(base_name)
-    r = re.compile(".*" + base_name + "\.[jJ][pP][Gg]")
-    matching_file = list(filter(r.match, jpg_list))
-    #print(matching_file)
-    if len(matching_file):
-        print("exist, leave it")
-    else:
-        print("delete raw ", f)
-
-#TODO: Ask before doing all the moves
-
-# Now scan the RAW
-raw_list = glob.glob(basedir)
-jpg_list = glob.glob(os.curdir + "/../*.[jJ][pP][Gg]")
-
-for f in raw_list:
-    print("raw : ", f)
-    base_name = os.path.basename(f)
-    base_name = os.path.splitext(base_name)[0]
-    #print(base_name)
-    r = re.compile(".*" + base_name + "\.[jJ][pP][Gg]")
-    matching_file = list(filter(r.match, jpg_list))
-    #print(matching_file)
-    if len(matching_file):
-        print("exist, leave it")
-    else:
-        print("delete raw ", f)
+def move_inexisting_file(first_list, second_list, pattern, destination_dir):
+    global dry_run
+    for f in first_list:
+        #print("jpg : ", f)
+        original_name = os.path.basename(f)
+        base_name = os.path.splitext(original_name)[0]
+        #print(base_name)
+        r = re.compile(".*" + base_name + "\." + pattern)
+        matching_file = list(filter(r.match, second_list))
+        #print(matching_file)
+        if not len(matching_file):
+            destination_file = destination_dir + "/" + original_name
+            print("Moving : ", f, " to ", destination_file)
+            if not dry_run :
+                if not os.path.exists(destination_dir):
+                    os.makedirs(destination_dir)
+                os.rename(f, destination_file)
+def main(argv):
+    global dry_run
+    dry_run = True
+    try:
+      opts, args = getopt.getopt(argv,'hm')
+    except getopt.GetoptError:
+      print('Usage : delete_raw_if_jpg_not_exist.py -m to move files')
+      sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print('Usage : delete_raw_if_jpg_not_exist.py [-m]')
+            print('Use "-m" to run the script with touching files.')
+            sys.exit()
+        elif opt == '-m':
+         dry_run = False
 
 
-print("fin")
-exit(1)
+    rawdir = os.curdir + "/*." + raw_pattern
+    jpgdir = os.curdir + "/../*." + jpg_pattern
+    raw_list = glob.glob(rawdir)
+    jpg_list = glob.glob(jpgdir)
+    print("# Scan the jpg to find the one without raw and put it in 'jpg_only'")
+    move_inexisting_file(jpg_list, raw_list, raw_pattern, jpg_only_folder)
+    print("# Scan the RAW to delete the one without jpg")
+    move_inexisting_file(raw_list, jpg_list, jpg_pattern, to_delete_folder)
+    if dry_run :
+        print("--------------------------------------------------")
+        print("- WARNING : Dry run, no files has been touched ! -")
+        print("- Use '-m' switch to really move file            -")
+        print("--------------------------------------------------")
+    print("Done")
 
-
-#find subdirectories
-for path, dirs, files in os.walk(os.path.abspath(root)):
-    #TODO: uniquement fichiers
-    print(path)
-    raw_hash = {}
-    for raw in locate(path, raw_ext):
-        base_name = os.path.basename(raw)
-        base_name = os.path.splitext(base_name)[0]
-        raw_hash[base_name] = True
-
-    # find pairs and move jpgs of pairs to waste basket
-    #TODO: remonter d'un repertoire
-    for jpg in locate(path, jpg_ext):
-        base_name = os.path.basename(jpg)
-        base_name = os.path.splitext(base_name)[0]
-        if base_name not in raw_hash:
-            jpg_base_name_with_ext = base_name + jpg_extension
-            new_jpg = waste_dir + jpg_base_name_with_ext
-            print(path, base_name, jpg, waste_dir)
-            if os.path.exists(new_jpg):
-                #os.remove(jpg)
-                print("Efface ", new_jpg)
-            else:
-                #os.rename(jpg, new_jpg)
-                print("Rename ", jpg, "=>", new_jpg)
+if __name__ == "__main__":
+   main(sys.argv[1:])
