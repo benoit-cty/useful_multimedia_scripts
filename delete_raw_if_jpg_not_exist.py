@@ -79,6 +79,7 @@ def move_inexisting_file(first_list, second_list, pattern, destination_dir):
 def main(argv):
     global dry_run
     dry_run = True
+    print('Reminder : Run in RAW folder !!!')
     try:
       opts, args = getopt.getopt(argv,'hm')
     except getopt.GetoptError:
