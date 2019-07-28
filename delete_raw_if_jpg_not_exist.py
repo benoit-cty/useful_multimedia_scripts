@@ -28,11 +28,11 @@ touch test_folder/random_file.txt
 mkdir test_folder/raw
 touch test_folder/picture.jPg
 touch "test_folder/17.12.25 - Real Santa.jpg"
-touch "test_folder/17.12.25 - Real Santa2.JPG"
+touch "test_folder/17.12.25 - Real Santa2 (Cannon).JPG"
 touch "test_folder/17.12.25 - Fake Santa.jpg"
 touch "test_folder/17.12.25 - Fake Santa2.JPG"
 touch "test_folder/raw/17.12.25 - Real Santa.dng"
-touch "test_folder/raw/17.12.25 - Real Santa2.cr2"
+touch "test_folder/raw/17.12.25 - Real Santa2 (Cannon).cr2"
 touch "test_folder/raw/17.12.25 - Real Santa3.crw"
 => Launch the script in "raw" folder.
 Attended result :
@@ -65,8 +65,9 @@ def move_inexisting_file(first_list, second_list, pattern, destination_dir):
         original_name = os.path.basename(f)
         base_name = os.path.splitext(original_name)[0]
         #print(base_name)
-        r = re.compile(".*" + base_name + "\." + pattern)
-        matching_file = list(filter(r.match, second_list))
+        #r = re.compile(".*" + base_name + "\." + pattern)
+        #matching_file = list(filter(r.match, second_list))
+        matching_file = list(filter(lambda filename: base_name in filename, second_list))
         #print(matching_file)
         if not len(matching_file):
             destination_file = destination_dir + "/" + original_name
