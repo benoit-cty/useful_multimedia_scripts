@@ -1,4 +1,4 @@
-#!/sbin/python3
+#!/usr/bin/python3
 # Based on
 
 # Description: This script looks in a sub-directorie for RAW files.
