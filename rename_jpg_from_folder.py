@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-# Description: This script looks for directories for their names.
-#              For each dir it looks in it to rename file accordingly.
+# Description: This script looks for sub-directories.
+#              For each dir it looks in it to rename file according to directory name.
 #
 # Tested under Ubuntu 18.04 and Windows 10
 #
@@ -27,7 +27,7 @@ touch "test_folder/jpg2/17.12.25 - Real Santa2.JPG"
 touch "test_folder/jpg2/17.12.25 - Fake Santa.jpg"
 touch "test_folder/jpg2/17.12.25 - Fake Santa2.JPG"
 => Launch the script in current folder.
-Attended result :
+Expected result :
 Files in jpg1 and jpg2 are rename with the folder name at the end.
 
 '''
@@ -53,23 +53,23 @@ def rename_file(folder_list):
 def main(argv):
     global dry_run
     dry_run = True
-    print('Reminder : Run in RAW folder !!!')
     try:
-      opts, args = getopt.getopt(argv,'hr')
+      opts, _ = getopt.getopt(argv,'hr')
     except getopt.GetoptError:
       print('Usage : rename_jpg_from_folder.py -r to rename files')
       sys.exit(2)
-    for opt, arg in opts:
+    for opt, _ in opts:
         if opt == '-h':
             print('Usage : rename_jpg_from_folder.py [-r]')
             print('Use "-r" to run the script with touching files.')
             sys.exit()
         elif opt == '-r':
          dry_run = False
-    rawdir = os.curdir
     jpgdir = os.path.join(os.curdir)
     print("Looking into", os.path.realpath(jpgdir), " to rename in subfolders")
+    # Get folder list
     folder_list = [ name for name in os.listdir(jpgdir) if os.path.isdir(os.path.join(jpgdir, name)) ]
+    # Remove folder to ignore from the list
     folder_list = [folder for folder in folder_list if folder not in FOLDER_TO_IGNORE]
     print("# Scan the current folder to rename in subfolders")
     rename_file(folder_list)
