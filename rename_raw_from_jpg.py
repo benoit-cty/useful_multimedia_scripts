@@ -2,13 +2,16 @@
 
 # Description: This script looks in a upper directory for files.
 #              For each file it looks in current directory if the file exist
-#              with the same number (more than 3 digits in filename),
+#              with the same number (between 3 and 50 digits in filename),
 #              Then it rename it in current folder with same name.
+#
+# Make for renaming RAW after JPG but it could do the same for any extensions.
+#
 #
 # Huge modifications of a script from Thomas Dahlmann and Renaud Boitouzet ( https://photo.stackexchange.com/questions/16401/how-to-delete-jpg-files-but-only-if-the-matching-raw-file-exists/49377#49377 )
 #
 #
-# Tested under Ubuntu and Windows
+# Tested under Ubuntu 18.04 and Windows 10
 #
 #
 import os
@@ -27,87 +30,99 @@ touch test_folder/picture.jPg
 touch "test_folder/18.08.12 - 60793 - RealSanta - Flying (Canon).jpg"
 touch "test_folder/18.08.12 - 60794 - RealSanta - Landind.jpg"
 touch "test_folder/18.08.12 - 60795 - RealSanta - TakeOff.jpg"
-touch "test_folder/17.12.25 - Real Santa2.JPG"
-touch "test_folder/17.12.25 - Fake Santa.jpg"
-touch "test_folder/17.12.25 - Fake Santa2.JPG"
-touch "test_folder/raw/18.08.12 - 60793 - RealSanta.crW"
-touch "test_folder/raw/18.08.12 - 60794.cr2"
-touch "test_folder/raw/P60795.raw"
-touch "test_folder/raw/17.12.25 - Real Santa2.cr2"
-touch "test_folder/raw/17.12.25 - Real Santa3.crw"
-=> Launch the script in "raw" folder.
-Attended result :
-"17.12.25 - Real Santa3.crw" is moved to "to_delete"
-We are alerted than "17.12.25 - Fake Santa2.JPG", "picture.jPg" and "17.12.25 - Fake Santa.jpg" has no raw image and we find it in "jpg_only"
-JPG with raw are moved in
-File than are not raw or jpg are moved to "jpg_camera"
+touch "test_folder/18.08.12 - 60796 - RealSanta - TakeOff.jpg"
+touch "test_folder/18.08.12 - 60796 - RealSanta - TakeOff-ret.jpg"
+touch "test_folder/raw/garbage.jPg" # No file number
+touch "test_folder/raw/18.08.12 - 60793 - RealSanta.crW" # To be renamed
+touch "test_folder/raw/18.08.12 - 60794.cr2" # To be renamed
+touch "test_folder/raw/P60795.raw" # To be renamed
+touch "test_folder/raw/P60796.CRW" # Multiple corresponding JPG
+touch "test_folder/raw/P60797.CRW" # No corresponding JPG
+touch "test_folder/raw/17.12.25 - Real Santa3.crw" # No file number
+#=> Launch the script in "raw" folder :
+cd test_folder/raw
+python3 ../../rename_raw_from_jpg.py
+# Expected result :
+# No file number found in "garbage.jPg" Leave as it is.
+WARNING : More than one named file found for "P60796.CRW"
+No named file for "P60797.CRW"
+No file number found in "17.12.25 - Real Santa3.crw" Leave as it is.
 
-jpg without raw :  ./../17.12.25 - Fake Santa.jpg
-jpg without raw :  ./../17.12.25 - Fake Santa2.JPG
-jpg without raw :  ./../picture.jpg
-# Scan the RAW to delete the one without jpg
-move raw to trash  ./17.12.25 - Real Santa3.crw
-
+--- End of processing ---
+Number of file modification: 5
 
 '''
 
-def move_inexisting_file(first_list, second_list, destination_dir):
-    global dry_run
-    for f in first_list:
-        #print("jpg : ", f)
-        original_name = os.path.basename(f)
-        base_name = os.path.splitext(original_name)[0]
-        #print(base_name)
-        m = re.search(r'([0-9]{3,10})', base_name)
-        if m:
-            file_number = m.group(1)
-            #print( 'Match found: ', file_number)
+debug = False
+
+def move_file(ori_name, dest_dir, dest_name):
+    destination_file = os.path.join(dest_dir, dest_name)
+    if debug: print(f'Moving "{ori_name}", to "{destination_file}"')
+    if not dry_run :
+        if not os.path.exists(dest_dir):
+            os.makedirs(dest_dir)
+        os.rename(ori_name, destination_file)
+        return 1
+    else:
+        return 0
+
+
+def rename_file(named_list, to_rename_list, orphan_dir, many_match_dir):
+    file_modification_nb = 0
+    for file_to_rename in to_rename_list:
+        if debug: print("-----------\nProcessing : ", file_to_rename)
+        to_rename_basename = os.path.basename(file_to_rename)
+        to_rename_without_ext = os.path.splitext(to_rename_basename)[0]
+        #if debug: print('to_rename_without_ext', to_rename_without_ext)
+        # Looking for number in filename
+        reg_exp_match = re.search(r'([0-9]{3,50})', to_rename_without_ext)
+        if reg_exp_match:
+            file_number = reg_exp_match.group(1)
         else:
-            print('No file number found in', original_name)
+            print(f'No file number found in "{to_rename_basename}" Leave as it is.')
             continue
-        #print(base_name, "as num",file_number)
+        # Looking for the same number in named files
         r = re.compile(".*" + file_number + r".*")
-        matching_file = list(filter(r.match, second_list))
-        #print(matching_file)
+        matching_file = list(filter(r.match, named_list))
         if len(matching_file)<1:
-            print("No corresponding file found for", original_name)
+            print(f'No named file for "{to_rename_basename}"')
+            file_modification_nb += move_file(file_to_rename, orphan_dir, to_rename_basename)
         elif len(matching_file)>1:
-            print("More than one corresponding file found for", original_name)
-        if len(matching_file)==1:
+            print(f'WARNING : More than one named file found for "{to_rename_basename}"')
+            file_modification_nb += move_file(file_to_rename, many_match_dir, to_rename_basename)
+        elif len(matching_file)==1:
             matching_file = matching_file[0]
-            dest_original_name = os.path.basename(matching_file)
-            dest_extension = os.path.splitext(dest_original_name)[1]
-            destination_file = os.path.join(destination_dir, base_name + dest_extension)
-            #print(destination_file)
-            print("Moving : ", matching_file, " to ", destination_file)
-            if not dry_run :
-                if not os.path.exists(destination_file):
-                    os.rename(matching_file, destination_file)
+            #if debug: print('matching_file', matching_file)
+            named_without_ext = os.path.splitext(os.path.basename(matching_file))[0]
+            to_rename_extension = os.path.splitext(to_rename_basename)[1]
+            file_modification_nb += move_file(file_to_rename, './', named_without_ext + to_rename_extension)
+    print("\n--- End of processing ---\nNumber of file modification:", file_modification_nb)
 
 def main(argv):
     global dry_run
     dry_run = True
     print('Reminder : Run in RAW folder !!!')
     try:
-      opts, args = getopt.getopt(argv,'hr')
+      opts, _ = getopt.getopt(argv,'hr')
     except getopt.GetoptError:
       print('Usage : rename_raw_from_jpg.py -r to rename files')
       sys.exit(2)
-    for opt, arg in opts:
+    for opt, _ in opts:
         if opt == '-h':
             print('Usage : rename_raw_from_jpg.py [-r]')
-            print('Use "-m" to run the script with touching files.')
+            print('Use "-r" to run the script with files modification.')
             sys.exit()
         elif opt == '-r':
          dry_run = False
-    rawdir = os.curdir
-    jpgdir = os.path.join(os.curdir, r"..")
-    print("Looking into", os.path.realpath(jpgdir), " to rename in", os.path.realpath(rawdir))
-    raw_list = glob.glob(rawdir + "/*.*")
-    jpg_list = glob.glob(jpgdir + "/*.*")
+    to_rename_dir = os.curdir
+    named_dir = os.path.join(os.curdir, r"..")
+    orphan_dir = os.path.join(os.curdir, r"../no_named_file_found/")
+    many_match_dir = os.path.join(os.curdir, r"../multiple_named_found/")
+    print("Looking into", os.path.realpath(named_dir), " to rename in", os.path.realpath(to_rename_dir))
+    to_rename_list = glob.glob(to_rename_dir + "/*.*")
+    named_list = glob.glob(named_dir + "/*.*")
 
-    print("# Scan the upper folder to rename the current")
-    move_inexisting_file(jpg_list, raw_list, rawdir)
+    rename_file(named_list, to_rename_list, orphan_dir, many_match_dir)
     if dry_run :
         print("--------------------------------------------------")
         print("- WARNING : Dry run, no files has been touched ! -")
