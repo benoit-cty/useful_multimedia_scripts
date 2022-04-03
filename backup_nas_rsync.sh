@@ -7,7 +7,7 @@ renice +19 $PID
 DATA_LOCAL=/media/data
 BACKUP_DEST=/mnt/data/backup-benoit/backup-beal
 
-DRY_RUN="--dry-run"
+#DRY_RUN="--dry-run"
 export RSYNC_RSH="ssh -A -J remote_backup_ssh"
 REMOTE_SSH="root@172.17.0.3"
 RSYNC_OPTIONS="$DRY_RUN --no-perms --no-owner --no-group --delete-after -avz --stats --exclude-from=/home/ben/exclude.txt"
