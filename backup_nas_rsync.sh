@@ -5,18 +5,18 @@ PID=$$
 renice +19 $PID
 
 DATA_LOCAL=/media/data
-BACKUP_DEST=/media/data/Backup-NAS
+BACKUP_DEST=/mnt/data/backup-benoit/backup-beal
 
-#DRY_RUN="--dry-run"
+DRY_RUN="--dry-run"
+export RSYNC_RSH="ssh -A -J remote_backup_ssh"
+REMOTE_SSH="root@172.17.0.3"
 RSYNC_OPTIONS="$DRY_RUN --no-perms --no-owner --no-group --delete-after -avz --stats --exclude-from=/home/ben/exclude.txt"
 function quit()
 {
        echo "Il y a eu des ERREURS. Vous pouvez éteindre le disque.";
-       pico2wave -w /tmp/pico.wav -l fr-FR "Il y a eu une ERREUR Sauvegarde terminé ERREUR ERREUR !" && play /tmp/pico.wav;
        exit 1;
 }
 
-#pico2wave -w /tmp/pico.wav -l fr-FR "Bonjour maitre, a votre service !" && play /tmp/pico.wav;
 
 if [ -n "$DRY_RUN" ]; then
 	echo "=============================================================="
@@ -43,7 +43,9 @@ function backup()
 			quit;
 		fi
 	fi
-	rsync $RSYNC_OPTIONS /media/$FOLDER/ remote_backup_ssh:/media/backup-ben/backup-beal/$FOLDER
+	set -x
+	rsync $RSYNC_OPTIONS /media/$FOLDER/ $REMOTE_SSH:$BACKUP_DEST/$FOLDER
+	set +x
 }
 backup NAS-Administratif /media/NAS-Administratif/Keypass/
 backup NAS-Emie /media/NAS-Emie/Comptes
