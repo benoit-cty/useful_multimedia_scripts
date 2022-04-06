@@ -1,11 +1,16 @@
 #!/bin/bash
 
+echo "DEBUT `date`"
 ### Priorité faible
 PID=$$
 renice +19 $PID
 
+# Load ssh-agent for password SSH key to work in crontab
+# See https://serverfault.com/questions/92683/execute-rsync-command-over-ssh-with-an-ssh-agent-via-crontab
+. ~/.keychain/rig-sh 
+
 DATA_LOCAL=/media/data
-BACKUP_DEST=/mnt/data/backup-benoit/backup-beal
+BACKUP_DEST=/mnt/backup-benoit/backup-beal
 
 #DRY_RUN="--dry-run"
 export RSYNC_RSH="ssh -A -J remote_backup_ssh"
@@ -51,4 +56,4 @@ backup NAS-Administratif /media/NAS-Administratif/Keypass/
 backup NAS-Emie /media/NAS-Emie/Comptes
 backup NAS-Divers /media/NAS-Divers/Benoit
 backup NAS-Photos /media/NAS-Photos/Photos_2017
-
+echo "FIN `date`"
