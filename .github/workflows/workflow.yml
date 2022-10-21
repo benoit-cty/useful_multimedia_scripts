@@ -19,15 +19,7 @@ jobs:
         env:
           GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
         run: echo "$GITHUB_COMMITS"
-      - uses: actions/github-script@v6
-        id: last_commit
-        with:
-          script: |
-            const commits = ${{ toJSON(github.event.commits) }}
-            return commits.at(-1).id;
-          result-encoding: string
-      - name: Get result
-        run: echo "last_commit=${{steps.last_commit.outputs.result}}"
+
       # - name: LAST_COMMIT
       #   env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
       #   run: echo "LAST_COMMIT=$LAST_COMMIT"
@@ -90,11 +82,34 @@ jobs:
           GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
         run: |
           echo "$GITHUB_COMMITS"
-      - name: Download build
-        uses: actions/download-artifact@v3
+      # - name: Download build
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: test-build-${{steps.last_commit.outputs.result}}
+      #     path: /tmp
+      - uses: actions/github-script@v6
+        id: last_pr_commit
         with:
-          name: test-build-${{steps.last_commit.outputs.result}}
+          script: |
+            const commits = ${{ toJSON(github.event.commits) }}
+            return commits.at(-2).id;
+          result-encoding: string
+      - name: Get last_pr_commit
+        run: echo "last_pr_commit=${{steps.last_pr_commit.outputs.result}}"
+      - name: Download artifact
+        id: download-artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow_conclusion: success
+          commit: ${{steps.last_pr_commit.outputs.result}}
+          # Optional, uploaded artifact name,
+          # will download all artifacts if not specified
+          # and extract them into respective subdirectories
+          # https://github.com/actions/download-artifact#download-all-artifacts
+          name: test-build-${{steps.last_pr_commit.outputs.result}}
+          # Optional, a directory where to extract artifact(s), defaults to the current directory
           path: /tmp
+          if_no_artifact_found: fail
       - name: Publish a git tag
         run: "cat /tmp/README.md"
 
