@@ -12,18 +12,16 @@ jobs:
     steps:
       - name: LAST_COMMIT
         env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
-      - run: echo "LAST_COMMIT=$LAST_COMMIT"
+        run: echo "LAST_COMMIT=$LAST_COMMIT"
       - uses: actions/checkout@v3
       - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: |
-          echo "$GITHUB_CONTEXT"
+        run: echo "$GITHUB_CONTEXT"
       - name: GITHUB_COMMITS
         env:
           GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
-        run: |
-          echo "$GITHUB_COMMITS"
+        run: echo "$GITHUB_COMMITS"
       - name: Extract last commit
         uses: sergeysova/jq-action@v2
         id: last_commit
