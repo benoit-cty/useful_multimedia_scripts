@@ -11,6 +11,31 @@ jobs:
     if: github.ref != 'refs/heads/master'
     steps:
       - uses: actions/checkout@v3
+      - name: GITHUB_CONTEXT
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
+      - name: GITHUB_COMMITS
+        env:
+          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
+        run: echo "$GITHUB_COMMITS"
+      - uses: actions/github-script@v6
+        id: last_commit
+        with:
+          script: |
+            const commits = ${{ toJSON(github.event.commits) }}
+            return commits.at(-1).id;
+          result-encoding: string
+      - name: Get result
+        run: echo "last_commit=${{steps.last_commit.outputs.result}}"
+      # - name: LAST_COMMIT
+      #   env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
+      #   run: echo "LAST_COMMIT=$LAST_COMMIT"
+      # - name: Extract last commit
+      #   uses: sergeysova/jq-action@v2
+      #   id: last_commit
+      #   with:
+      #     cmd: 'jq .[-1].id <<< $GITHUB_COMMITS'
       - name: Debug
         run: |
           echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
@@ -20,16 +45,8 @@ jobs:
           echo "github.event.pull_request.commits[0].id=${{ github.event.pull_request.commits[0].id }}"
           echo "github.event.pull_request.commits[-1].id=${{ github.event.pull_request.commits[-1].id }}"
           echo "github.event.before=${{ github.event.before }}"
-      - name: GITHUB_CONTEXT
-        env:
-          GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: |
-          echo "$GITHUB_CONTEXT"
-      - name: GITHUB_COMMITS
-        env:
-          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
-        run: |
-          echo "$GITHUB_COMMITS"
+          echo "steps.last_commit.outputs.value=${{ steps.last_commit.outputs.result }}"
+
       - name: Upload build
         uses: actions/upload-artifact@v3
         with:
@@ -46,6 +63,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
+      - uses: actions/github-script@v6
+        id: last_commit
+        with:
+          script: |
+            const commits = ${{ toJSON(github.event.commits) }}
+            return commits.at(-2).id;
+          result-encoding: string
+      - name: Get last_commit
+        run: echo "last_commit=${{steps.last_commit.outputs.result}}"
       - name: Debug
         run: |
           echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
@@ -67,7 +93,7 @@ jobs:
       - name: Download build
         uses: actions/download-artifact@v3
         with:
-          name: test-build-${{github.event.before}}
+          name: test-build-${{steps.last_commit.outputs.result}}
           path: /tmp
       - name: Publish a git tag
         run: "cat /tmp/README.md"
