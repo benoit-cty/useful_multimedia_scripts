@@ -19,15 +19,6 @@ jobs:
         env:
           GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
         run: echo "$GITHUB_COMMITS"
-
-      # - name: LAST_COMMIT
-      #   env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
-      #   run: echo "LAST_COMMIT=$LAST_COMMIT"
-      # - name: Extract last commit
-      #   uses: sergeysova/jq-action@v2
-      #   id: last_commit
-      #   with:
-      #     cmd: 'jq .[-1].id <<< $GITHUB_COMMITS'
       - name: Debug
         run: |
           echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
