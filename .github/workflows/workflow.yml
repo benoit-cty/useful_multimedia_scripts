@@ -11,9 +11,13 @@ jobs:
     if: github.ref != 'refs/heads/master'
     steps:
       - uses: actions/checkout@v3
+      - name: Debug
+        run: |
+          echo "${{ github.event.pull_request.head.sha }}"
+          echo "${{ github.sha }}"
       - name: Dump GitHub context
         env:
-          GITHUB_CONTEXT: ${{ toJSON(github.event.pull_request) }}
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
         run: echo "$GITHUB_CONTEXT"
       - name: Upload build
         uses: actions/upload-artifact@v3
@@ -21,7 +25,7 @@ jobs:
         # Don't work:
         # github.event.pull_request.head.ref
         # github.event.pull_request._links.html.href
-          name: test-build-${{ github.event.pull_request.head.sha }}
+          name: test-build-${{ github.sha }}
           path: README.md
           retention-days: 2
 
@@ -29,6 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
+      - name: Debug
+        run: |
+          echo "${{ github.event.pull_request.head.sha }}"
+          echo "${{ github.sha }}"
       - name: Dump GitHub context
         env:
           GITHUB_CONTEXT: ${{ toJSON(github.event.pull_request) }}
