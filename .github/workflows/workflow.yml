@@ -15,7 +15,7 @@ jobs:
         uses: sergeysova/jq-action@v2
         id: last_commit
         with:
-          cmd: 'toJSON(github.event.commits) | jq .[-1].id'
+          cmd: 'jq .[-1].id <<< ${{ toJSON(github.event.commits) }}'
           multiline: true
       - name: Debug
         run: |
