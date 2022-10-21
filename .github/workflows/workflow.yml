@@ -45,7 +45,7 @@ jobs:
           echo "github.event.pull_request.commits[0].id=${{ github.event.pull_request.commits[0].id }}"
           echo "github.event.pull_request.commits[-1].id=${{ github.event.pull_request.commits[-1].id }}"
           echo "github.event.before=${{ github.event.before }}"
-          echo "steps.last_commit.outputs.value=${{ steps.last_commit.outputs.value }}"
+          echo "steps.last_commit.outputs.value=${{ steps.last_commit.outputs.result }}"
 
       - name: Upload build
         uses: actions/upload-artifact@v3
