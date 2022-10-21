@@ -48,10 +48,16 @@ jobs:
           echo "${{ github.event.pull_request.head.sha }}"
           echo "${{ github.sha }}"
           echo "${{ github.event.commits }}"
-      - name: Dump GitHub context
+      - name: GITHUB_CONTEXT
         env:
-          GITHUB_CONTEXT: ${{ toJSON(github.event.pull_request) }}
-        run: echo "$GITHUB_CONTEXT"
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: |
+          echo "$GITHUB_CONTEXT"
+      - name: GITHUB_COMMITS
+        env:
+          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
+        run: |
+          echo "$GITHUB_COMMITS"
       - name: Download build
         uses: actions/download-artifact@v3
         with:
