@@ -11,10 +11,16 @@ jobs:
     if: github.ref != 'refs/heads/master'
     steps:
       - uses: actions/checkout@v3
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
       - name: Upload build
         uses: actions/upload-artifact@v3
         with:
-          name: test-build-${{ github.event.pull_request.head.ref }}
+        # Don't work:
+        # github.event.pull_request.head.ref
+          name: test-build-${{ github.event.pull_request._links.html.href }}
           path: README.md
           retention-days: 2
 
@@ -22,10 +28,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
       - name: Download build
         uses: actions/download-artifact@v3
         with:
-          name: test-build-${{ github.event.pull_request.head.ref }}
+          name: test-build-${{ github.event.pull_request._links.html.href }}
           path: /tmp
       - name: Publish a git tag
         run: "cat /tmp/README.md"
+
