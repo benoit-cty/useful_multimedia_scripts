@@ -15,16 +15,26 @@ jobs:
         run: |
           echo "${{ github.event.pull_request.head.sha }}"
           echo "${{ github.sha }}"
-      - name: Dump GitHub context
+          echo "${{ github.event.commits[0].id }}"
+          echo "${{ github.event.commits }}"
+      - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: echo "$GITHUB_CONTEXT"
+        run: |
+          echo "$GITHUB_CONTEXT"
+      - name: GITHUB_COMMITS
+        env:
+          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
+        run: |
+          echo "$GITHUB_COMMITS"
       - name: Upload build
         uses: actions/upload-artifact@v3
         with:
         # Don't work:
         # github.event.pull_request.head.ref
         # github.event.pull_request._links.html.href
+        # github.event.pull_request.head.sha
+        # github.sha
           name: test-build-${{ github.sha }}
           path: README.md
           retention-days: 2
@@ -37,6 +47,7 @@ jobs:
         run: |
           echo "${{ github.event.pull_request.head.sha }}"
           echo "${{ github.sha }}"
+          echo "${{ github.event.commits }}"
       - name: Dump GitHub context
         env:
           GITHUB_CONTEXT: ${{ toJSON(github.event.pull_request) }}
@@ -44,7 +55,7 @@ jobs:
       - name: Download build
         uses: actions/download-artifact@v3
         with:
-          name: test-build-${{ github.event.pull_request.head.sha }}
+          name: test-build-${{ github.event.commits[0].id }}
           path: /tmp
       - name: Publish a git tag
         run: "cat /tmp/README.md"
