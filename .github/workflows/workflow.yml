@@ -10,8 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     steps:
-      - run: echo 'Last commit=${{ toJSON(github.event.commits) }}' | jq .[-1].id
-
+      - name: LAST_COMMIT
+        env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
+      - run: echo "LAST_COMMIT=$LAST_COMMIT"
       - uses: actions/checkout@v3
       - name: GITHUB_CONTEXT
         env:
