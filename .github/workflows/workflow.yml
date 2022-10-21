@@ -11,6 +11,12 @@ jobs:
     if: github.ref != 'refs/heads/master'
     steps:
       - uses: actions/checkout@v3
+      - name: Extract last commit
+        uses: sergeysova/jq-action@v2
+        id: last_commit
+        with:
+          cmd: '${{ github.event.commits }} | jq .[-1].id'
+          multiline: true
       - name: Debug
         run: |
           echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
@@ -20,6 +26,7 @@ jobs:
           echo "github.event.pull_request.commits[0].id=${{ github.event.pull_request.commits[0].id }}"
           echo "github.event.pull_request.commits[-1].id=${{ github.event.pull_request.commits[-1].id }}"
           echo "github.event.before=${{ github.event.before }}"
+          echo "steps.last_commit.outputs.value=${{ steps.last_commit.outputs.value }}"
       - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
