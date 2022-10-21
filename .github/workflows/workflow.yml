@@ -15,7 +15,8 @@ jobs:
         run: |
           echo "${{ github.event.pull_request.head.sha }}"
           echo "${{ github.sha }}"
-          echo "github.event.commits[0].id"
+          echo "${{ github.event.commits[0].id }}"
+          echo "${{ github.event.commits }}"
       - name: Dump GitHub context
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
