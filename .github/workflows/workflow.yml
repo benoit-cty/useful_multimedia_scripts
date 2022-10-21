@@ -35,7 +35,7 @@ jobs:
         # github.event.pull_request._links.html.href
         # github.event.pull_request.head.sha
         # github.sha
-          name: test-build-${{ github.sha }}
+          name: test-build-${{ github.event.commits[-1].id }}
           path: README.md
           retention-days: 2
 
@@ -61,7 +61,7 @@ jobs:
       - name: Download build
         uses: actions/download-artifact@v3
         with:
-          name: test-build-${{ github.event.commits[0].id }}
+          name: test-build-${{ github.event.commits[-2].id }}
           path: /tmp
       - name: Publish a git tag
         run: "cat /tmp/README.md"
