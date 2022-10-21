@@ -19,15 +19,6 @@ jobs:
         env:
           GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
         run: echo "$GITHUB_COMMITS"
-
-      # - name: LAST_COMMIT
-      #   env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
-      #   run: echo "LAST_COMMIT=$LAST_COMMIT"
-      # - name: Extract last commit
-      #   uses: sergeysova/jq-action@v2
-      #   id: last_commit
-      #   with:
-      #     cmd: 'jq .[-1].id <<< $GITHUB_COMMITS'
       - name: Debug
         run: |
           echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
@@ -45,8 +36,8 @@ jobs:
         # Don't work:
         # github.event.pull_request.head.ref
         # github.event.pull_request._links.html.href
-        # github.event.pull_request.head.sha
-        # github.sha
+        # github.event.pull_request.head.sha => Ne fonctionne que pour l'ouverture d'une PR
+        # github.sha => Ne fonctionne pas sur l'ouverture d'une PR
           name: test-build-${{ github.sha }}
           path: README.md
           retention-days: 2
@@ -96,6 +87,8 @@ jobs:
           result-encoding: string
       - name: Get last_pr_commit
         run: echo "last_pr_commit=${{steps.last_pr_commit.outputs.result}}"
+      # Default Download artifact don't see artifact of other workflow
+      # So we use dawidd6/action-download-artifact@v2 to do it.
       - name: Download artifact
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
