@@ -20,7 +20,10 @@ jobs:
       - name: Dump GitHub context
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: echo "$GITHUB_CONTEXT"
+          GITHUB_COMMITS: ${{ github.event.commits }}
+        run: |
+          echo "$GITHUB_CONTEXT"
+          echo "$GITHUB_COMMITS"
       - name: Upload build
         uses: actions/upload-artifact@v3
         with:
