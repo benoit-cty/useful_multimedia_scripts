@@ -52,6 +52,7 @@ jobs:
           echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
           echo "github.event.commits[-1].id=${{ github.event.commits[-1].id }}"
           echo "github.event.commits[-2].id=${{ github.event.commits[-2].id }}"
+          echo "github.event.before=${{ github.event.before }}"
       - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
@@ -65,7 +66,7 @@ jobs:
       - name: Download build
         uses: actions/download-artifact@v3
         with:
-          name: test-build-${{ github.event.commits[-2].id }}
+          name: test-build-${{github.event.before}}
           path: /tmp
       - name: Publish a git tag
         run: "cat /tmp/README.md"
