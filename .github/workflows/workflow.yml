@@ -15,8 +15,10 @@ jobs:
         run: |
           echo "${{ github.event.pull_request.head.sha }}"
           echo "${{ github.sha }}"
-          echo "${{ github.event.commits[0].id }}"
-          echo "${{ github.event.commits }}"
+          echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
+          echo "github.event.commits=${{ github.event.commits }}"
+          echo "github.event.pull_request.commits[0].id=${{ github.event.pull_request.commits[0].id }}"
+          echo "github.event.pull_request.commits[-1].id=${{ github.event.pull_request.commits[-1].id }}"
       - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
@@ -47,7 +49,9 @@ jobs:
         run: |
           echo "${{ github.event.pull_request.head.sha }}"
           echo "${{ github.sha }}"
-          echo "${{ github.event.commits }}"
+          echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
+          echo "github.event.commits[-1].id=${{ github.event.commits[-1].id }}"
+          echo "github.event.commits[-2].id=${{ github.event.commits[-2].id }}"
       - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
