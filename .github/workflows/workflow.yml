@@ -24,10 +24,10 @@ jobs:
         with:
           script: |
             const commits = ${{ toJSON(github.event.commits) }}
-            console.log(commits[-1].id);
+            var id=null;
             for (const commit of commits) {
               console.log(commit);
-              id=commit.id
+              id=commit.id;
             }
             return id
           result-encoding: string
