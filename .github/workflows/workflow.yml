@@ -24,18 +24,20 @@ jobs:
         with:
           script: |
             const commits = ${{ toJSON(github.event.commits) }}
+            console.log(commits.at(-1).message);
             var id=null;
             for (const commit of commits) {
-              console.log(commit);
+              console.log(commit.message);
+              console.log(commit.id);
               id=commit.id;
             }
             return id
           result-encoding: string
       - name: Get result
         run: echo "${{steps.set-result.outputs.result}}"
-      - name: LAST_COMMIT
-        env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
-        run: echo "LAST_COMMIT=$LAST_COMMIT"
+      # - name: LAST_COMMIT
+      #   env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
+      #   run: echo "LAST_COMMIT=$LAST_COMMIT"
       - name: Extract last commit
         uses: sergeysova/jq-action@v2
         id: last_commit
