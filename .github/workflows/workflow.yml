@@ -1,5 +1,5 @@
 name: Test workflow
-
+### Test
 on:
   push:
   pull_request:
@@ -35,7 +35,7 @@ jobs:
         # github.event.pull_request._links.html.href
         # github.event.pull_request.head.sha
         # github.sha
-          name: test-build-${{ github.sha }}
+          name: test-build-${{ github.event.commits[0].id }}
           path: README.md
           retention-days: 2
 
