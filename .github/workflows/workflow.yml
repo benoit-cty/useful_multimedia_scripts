@@ -36,9 +36,9 @@ jobs:
         # Don't work:
         # github.event.pull_request.head.ref
         # github.event.pull_request._links.html.href
-        # github.event.pull_request.head.sha
-        # github.sha
-          name: test-build-${{ github.event.pull_request.head.sha }}
+        # github.event.pull_request.head.sha => Ne fonctionne que pour l'ouverture d'une PR
+        # github.sha => Ne fonctionne pas sur l'ouverture d'une PR
+          name: test-build-${{ github.sha }}
           path: README.md
           retention-days: 2
 
