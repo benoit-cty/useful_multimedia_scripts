@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Upload build
         uses: actions/upload-artifact@v3
         with:
