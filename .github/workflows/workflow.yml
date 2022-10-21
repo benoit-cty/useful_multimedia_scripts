@@ -1,0 +1,31 @@
+name: Test workflow
+
+on:
+  push:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v3
+      - name: Upload build
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-build-${{ github.ref_name }}
+          path: README.md
+          retention-days: 2
+
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - name: Download build
+        uses: actions/download-artifact@v3
+        with:
+          name: test-build-${{ github.ref_name }}
+          path: /tmp
+      - name: Publish a git tag
+        run: "cat /tmp/README.md"
