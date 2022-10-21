@@ -17,12 +17,15 @@ jobs:
           echo "${{ github.sha }}"
           echo "${{ github.event.commits[0].id }}"
           echo "${{ github.event.commits }}"
-      - name: Dump GitHub context
+      - name: GITHUB_CONTEXT
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
-          GITHUB_COMMITS: ${{ github.event.commits }}
         run: |
           echo "$GITHUB_CONTEXT"
+      - name: GITHUB_COMMITS
+        env:
+          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
+        run: |
           echo "$GITHUB_COMMITS"
       - name: Upload build
         uses: actions/upload-artifact@v3
