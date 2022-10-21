@@ -47,7 +47,7 @@ jobs:
         # github.event.pull_request._links.html.href
         # github.event.pull_request.head.sha
         # github.sha
-          name: test-build-${{ github.sha }}
+          name: test-build-${{ github.event.pull_request.head.sha }}
           path: README.md
           retention-days: 2
 
@@ -96,6 +96,8 @@ jobs:
           result-encoding: string
       - name: Get last_pr_commit
         run: echo "last_pr_commit=${{steps.last_pr_commit.outputs.result}}"
+      # Default Download artifact don't see artifact of other workflow
+      # So we use dawidd6/action-download-artifact@v2 to do it.
       - name: Download artifact
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
