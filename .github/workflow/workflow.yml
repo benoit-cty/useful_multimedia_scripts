@@ -26,3 +26,5 @@ jobs:
         with:
           name: test-build-${{ github.ref_name }}
           path: /tmp
+      - name: Publish a git tag
+        run: "cat /tmp/README.md"
