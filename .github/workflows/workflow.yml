@@ -19,6 +19,20 @@ jobs:
         env:
           GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
         run: echo "$GITHUB_COMMITS"
+      - uses: actions/github-script@v6
+        id: set-result
+        with:
+          script: |
+            const commits = ${{ toJSON(github.event.commits) }}
+            console.log(commits[-1].id);
+            for (const commit of commits) {
+              console.log(commit);
+              id=commit.id
+            }
+            return id
+          result-encoding: string
+      - name: Get result
+        run: echo "${{steps.set-result.outputs.result}}"
       - name: LAST_COMMIT
         env: ${{ toJSON(github.event.commits) }} | jq .[-1].id
         run: echo "LAST_COMMIT=$LAST_COMMIT"
