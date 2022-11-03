@@ -43,4 +43,6 @@ docker exec $CT_NAME service ssh start
 docker inspect $CT_NAME | grep 'IPAddress'
 docker exec -it $CT_NAME cryptsetup luksOpen $HDD hdd_backup
 docker exec $CT_NAME mount -t ext4 /dev/mapper/hdd_backup $CT_FOLDER
-echo "When done, run docker exec $CT_NAME cryptsetup luksClose hdd"
+echo "When done, run :"
+echo " docker exec $CT_NAME umount /dev/mapper/hdd_backup"
+echo " docker exec $CT_NAME cryptsetup luksClose hdd_backup"
