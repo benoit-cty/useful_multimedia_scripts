@@ -22,7 +22,7 @@ then
 fi
 
 # Test if container exist
-CID=$(docker ps -aq -f status=running -f name=^/${CT_NAME}$)
+CID=$(docker ps -aq  -f name=^/${CT_NAME}$)
 if [ ! "${CID}" ]; then
   echo "Container doesn't exist, creating it..."
   docker run -d -i -p 22:1979 -v $LOCAL_FOLDER:$CT_FOLDER --name $CT_NAME --privileged --cap-add=ALL ubuntu:22.04
@@ -35,7 +35,10 @@ if [ ! "${CID}" ]; then
   echo "Installing dependancies..."
   docker exec $CT_NAME apt install -y cryptsetup openssh-server rsync
   echo "Allowing root login into the container..."
-  docker exec $CT_NAME sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+  docker exec $CT_NAME sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+  docker exec $CT_NAME mkdir /root/.ssh
+  docker exec $CT_NAME chmod 700 /root/.ssh
+  docker cp /root/.ssh/authorized_keys cryptsetup_container:/root/.ssh/authorized_keys
 fi
 unset CID
 
