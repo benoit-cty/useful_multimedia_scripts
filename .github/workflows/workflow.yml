@@ -6,6 +6,38 @@ on:
     types: [opened, reopened]
 
 jobs:
+
+
+  check-for-functional-changes:
+    runs-on: ubuntu-20.04
+    outputs:
+      is_fonctional_change: ${{ steps.functional_changes.outputs.result }}
+    steps:
+      - id: functional_changes
+        run: echo "is_fonctional_change=success"  >> $GITHUB_OUTPUT
+
+
+  deploy:
+    runs-on: ubuntu-20.04
+    needs: [ check-for-functional-changes ]
+    if: |
+      github.ref != 'refs/heads/master' &&
+      ${{needs.check-for-functional-changes.outputs.is_fonctional_change}} == 'success'
+    steps:
+      - name: echo
+        run: echo ${{needs.check-for-functional-changes.outputs.is_fonctional_change}}
+
+  nodeploy:
+    runs-on: ubuntu-20.04
+    needs: [ check-for-functional-changes ]
+    if: |
+      github.ref != 'refs/heads/master' &&
+      ${{needs.check-for-functional-changes.outputs.is_fonctional_change}} != 'success'
+    steps:
+      - name: echo
+        run: echo ${{needs.check-for-functional-changes.outputs.is_fonctional_change}}
+
+
   build:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/master'
