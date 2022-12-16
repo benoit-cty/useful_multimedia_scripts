@@ -20,7 +20,7 @@ jobs:
   deploy:
     runs-on: ubuntu-20.04
     needs: [ check-for-functional-changes ]
-    if: ${{needs.check-for-functional-changes.outputs.is_fonctional_change}} == 'success'
+    if: needs.check-for-functional-changes.outputs.is_fonctional_change == 'success'
     # if: |
     #   github.ref != 'refs/heads/master' &&
     #   ${{needs.check-for-functional-changes.outputs.is_fonctional_change}} == 'success'
@@ -31,109 +31,109 @@ jobs:
   nodeploy:
     runs-on: ubuntu-20.04
     needs: [ check-for-functional-changes ]
-    if: ${{needs.check-for-functional-changes.outputs.is_fonctional_change}} != 'success'
+    if: needs.check-for-functional-changes.outputs.is_fonctional_change != 'success'
     steps:
       - name: echo
         run: echo ${{needs.check-for-functional-changes.outputs.is_fonctional_change}}
 
 
-  build:
-    runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/master'
-    steps:
-      - uses: actions/checkout@v3
-      - name: GITHUB_CONTEXT
-        env:
-          GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: echo "$GITHUB_CONTEXT"
-      - name: GITHUB_COMMITS
-        env:
-          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
-        run: echo "$GITHUB_COMMITS"
-      - name: Debug
-        run: |
-          echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
-          echo "github.sha=${{ github.sha }}"
-          echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
-          echo "github.event.commits=${{ github.event.commits }}"
-          echo "github.event.pull_request.commits[0].id=${{ github.event.pull_request.commits[0].id }}"
-          echo "github.event.pull_request.commits[-1].id=${{ github.event.pull_request.commits[-1].id }}"
-          echo "github.event.before=${{ github.event.before }}"
-          echo "steps.last_commit.outputs.value=${{ steps.last_commit.outputs.result }}"
+  # build:
+  #   runs-on: ubuntu-latest
+  #   if: github.ref != 'refs/heads/master'
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: GITHUB_CONTEXT
+  #       env:
+  #         GITHUB_CONTEXT: ${{ toJSON(github) }}
+  #       run: echo "$GITHUB_CONTEXT"
+  #     - name: GITHUB_COMMITS
+  #       env:
+  #         GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
+  #       run: echo "$GITHUB_COMMITS"
+  #     - name: Debug
+  #       run: |
+  #         echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
+  #         echo "github.sha=${{ github.sha }}"
+  #         echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
+  #         echo "github.event.commits=${{ github.event.commits }}"
+  #         echo "github.event.pull_request.commits[0].id=${{ github.event.pull_request.commits[0].id }}"
+  #         echo "github.event.pull_request.commits[-1].id=${{ github.event.pull_request.commits[-1].id }}"
+  #         echo "github.event.before=${{ github.event.before }}"
+  #         echo "steps.last_commit.outputs.value=${{ steps.last_commit.outputs.result }}"
 
-      - name: Upload build
-        uses: actions/upload-artifact@v3
-        with:
-        # Don't work:
-        # github.event.pull_request.head.ref
-        # github.event.pull_request._links.html.href
-        # github.event.pull_request.head.sha => Ne fonctionne que pour l'ouverture d'une PR
-        # github.sha => Ne fonctionne pas sur l'ouverture d'une PR
-          name: test-build-${{ github.sha }}
-          path: README.md
-          retention-days: 2
+  #     - name: Upload build
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #       # Don't work:
+  #       # github.event.pull_request.head.ref
+  #       # github.event.pull_request._links.html.href
+  #       # github.event.pull_request.head.sha => Ne fonctionne que pour l'ouverture d'une PR
+  #       # github.sha => Ne fonctionne pas sur l'ouverture d'une PR
+  #         name: test-build-${{ github.sha }}
+  #         path: README.md
+  #         retention-days: 2
 
-  deploy2:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
-    steps:
-      - uses: actions/github-script@v6
-        id: last_commit
-        with:
-          script: |
-            const commits = ${{ toJSON(github.event.commits) }}
-            return commits.at(-2).id;
-          result-encoding: string
-      - name: Get last_commit
-        run: echo "last_commit=${{steps.last_commit.outputs.result}}"
-      - name: Debug
-        run: |
-          echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
-          echo "github.sha=${{ github.sha }}"
-          echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
-          echo "github.event.commits[-1].id=${{ github.event.commits[-1].id }}"
-          echo "github.event.commits[-2].id=${{ github.event.commits[-2].id }}"
-          echo "github.event.before=${{ github.event.before }}"
-      - name: GITHUB_CONTEXT
-        env:
-          GITHUB_CONTEXT: ${{ toJSON(github) }}
-        run: |
-          echo "$GITHUB_CONTEXT"
-      - name: GITHUB_COMMITS
-        env:
-          GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
-        run: |
-          echo "$GITHUB_COMMITS"
-      # - name: Download build
-      #   uses: actions/download-artifact@v3
-      #   with:
-      #     name: test-build-${{steps.last_commit.outputs.result}}
-      #     path: /tmp
-      - uses: actions/github-script@v6
-        id: last_pr_commit
-        with:
-          script: |
-            const commits = ${{ toJSON(github.event.commits) }}
-            return commits.at(-2).id;
-          result-encoding: string
-      - name: Get last_pr_commit
-        run: echo "last_pr_commit=${{steps.last_pr_commit.outputs.result}}"
-      # Default Download artifact don't see artifact of other workflow
-      # So we use dawidd6/action-download-artifact@v2 to do it.
-      - name: Download artifact
-        id: download-artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow_conclusion: success
-          commit: ${{steps.last_pr_commit.outputs.result}}
-          # Optional, uploaded artifact name,
-          # will download all artifacts if not specified
-          # and extract them into respective subdirectories
-          # https://github.com/actions/download-artifact#download-all-artifacts
-          name: test-build-${{steps.last_pr_commit.outputs.result}}
-          # Optional, a directory where to extract artifact(s), defaults to the current directory
-          path: /tmp
-          if_no_artifact_found: fail
-      - name: Publish a git tag
-        run: "cat /tmp/README.md"
+  # deploy2:
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/master'
+  #   steps:
+  #     - uses: actions/github-script@v6
+  #       id: last_commit
+  #       with:
+  #         script: |
+  #           const commits = ${{ toJSON(github.event.commits) }}
+  #           return commits.at(-2).id;
+  #         result-encoding: string
+  #     - name: Get last_commit
+  #       run: echo "last_commit=${{steps.last_commit.outputs.result}}"
+  #     - name: Debug
+  #       run: |
+  #         echo "github.event.pull_request.head.sha=${{ github.event.pull_request.head.sha }}"
+  #         echo "github.sha=${{ github.sha }}"
+  #         echo "github.event.commits[0].id=${{ github.event.commits[0].id }}"
+  #         echo "github.event.commits[-1].id=${{ github.event.commits[-1].id }}"
+  #         echo "github.event.commits[-2].id=${{ github.event.commits[-2].id }}"
+  #         echo "github.event.before=${{ github.event.before }}"
+  #     - name: GITHUB_CONTEXT
+  #       env:
+  #         GITHUB_CONTEXT: ${{ toJSON(github) }}
+  #       run: |
+  #         echo "$GITHUB_CONTEXT"
+  #     - name: GITHUB_COMMITS
+  #       env:
+  #         GITHUB_COMMITS: ${{ toJSON(github.event.commits) }}
+  #       run: |
+  #         echo "$GITHUB_COMMITS"
+  #     # - name: Download build
+  #     #   uses: actions/download-artifact@v3
+  #     #   with:
+  #     #     name: test-build-${{steps.last_commit.outputs.result}}
+  #     #     path: /tmp
+  #     - uses: actions/github-script@v6
+  #       id: last_pr_commit
+  #       with:
+  #         script: |
+  #           const commits = ${{ toJSON(github.event.commits) }}
+  #           return commits.at(-2).id;
+  #         result-encoding: string
+  #     - name: Get last_pr_commit
+  #       run: echo "last_pr_commit=${{steps.last_pr_commit.outputs.result}}"
+  #     # Default Download artifact don't see artifact of other workflow
+  #     # So we use dawidd6/action-download-artifact@v2 to do it.
+  #     - name: Download artifact
+  #       id: download-artifact
+  #       uses: dawidd6/action-download-artifact@v2
+  #       with:
+  #         workflow_conclusion: success
+  #         commit: ${{steps.last_pr_commit.outputs.result}}
+  #         # Optional, uploaded artifact name,
+  #         # will download all artifacts if not specified
+  #         # and extract them into respective subdirectories
+  #         # https://github.com/actions/download-artifact#download-all-artifacts
+  #         name: test-build-${{steps.last_pr_commit.outputs.result}}
+  #         # Optional, a directory where to extract artifact(s), defaults to the current directory
+  #         path: /tmp
+  #         if_no_artifact_found: fail
+  #     - name: Publish a git tag
+  #       run: "cat /tmp/README.md"
 
