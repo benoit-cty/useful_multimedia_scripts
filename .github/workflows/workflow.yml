@@ -6,8 +6,6 @@ on:
     types: [opened, reopened]
 
 jobs:
-
-
   check-for-functional-changes:
     runs-on: ubuntu-20.04
     outputs:
@@ -15,7 +13,6 @@ jobs:
     steps:
       - id: functional_changes
         run: echo "result=success"  >> $GITHUB_OUTPUT
-
 
   deploy:
     runs-on: ubuntu-20.04
