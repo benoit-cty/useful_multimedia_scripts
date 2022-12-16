@@ -74,7 +74,7 @@ jobs:
           path: README.md
           retention-days: 2
 
-  deploy:
+  deploy2:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master'
     steps:
