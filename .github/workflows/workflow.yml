@@ -12,7 +12,8 @@ jobs:
       is_fonctional_change: ${{ steps.functional_changes.outputs.result }}
     steps:
       - id: functional_changes
-        run: echo "result=success"  >> $GITHUB_OUTPUT
+        #run: echo "result=success"  >> $GITHUB_OUTPUT
+        run: echo "result=KO"  >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: ubuntu-20.04
