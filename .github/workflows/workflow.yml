@@ -20,7 +20,9 @@ jobs:
   deploy:
     runs-on: ubuntu-20.04
     needs: [ check-for-functional-changes ]
-    if: needs.check-for-functional-changes.outputs.is_fonctional_change == 'success'
+    if: |
+      github.ref != 'refs/heads/master' &&
+      needs.check-for-functional-changes.outputs.is_fonctional_change == 'success'
     # if: |
     #   github.ref != 'refs/heads/master' &&
     #   ${{needs.check-for-functional-changes.outputs.is_fonctional_change}} == 'success'
@@ -31,7 +33,9 @@ jobs:
   nodeploy:
     runs-on: ubuntu-20.04
     needs: [ check-for-functional-changes ]
-    if: needs.check-for-functional-changes.outputs.is_fonctional_change != 'success'
+    if: |
+      github.ref != 'refs/heads/master' &&
+      needs.check-for-functional-changes.outputs.is_fonctional_change != 'success'
     steps:
       - name: echo
         run: echo ${{needs.check-for-functional-changes.outputs.is_fonctional_change}}
