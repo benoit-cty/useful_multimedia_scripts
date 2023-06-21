@@ -14,7 +14,7 @@ BACKUP_DEST=/mnt/backup-benoit/backup-beal
 
 #DRY_RUN="--dry-run"
 export RSYNC_RSH="ssh -A -J remote_backup_ssh"
-REMOTE_SSH="root@172.17.0.3"
+REMOTE_SSH="root@172.30.232.3"
 RSYNC_OPTIONS="$DRY_RUN --no-perms --no-owner --no-group --delete-after -avz --stats --exclude-from=/home/ben/exclude.txt"
 function quit()
 {
