@@ -23,6 +23,10 @@ RAW_EXTENSIONS = {
     ".3fr", ".arw", ".cr2", ".cr3", ".dng", ".nef", ".orf", ".pef",
     ".raf", ".raw", ".rw2", ".srw",
 }
+VIDEO_EXTENSIONS = {
+    ".3gp", ".avi", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg",
+    ".mts", ".m2ts", ".webm",
+}
 
 
 def date_taken(path):
@@ -32,11 +36,11 @@ def date_taken(path):
             exif = image.getexif()
             value = exif.get(36867) or exif.get(306)  # DateTimeOriginal, DateTime
         if value:
-            return datetime.strptime(value, "%Y:%m:%d %H:%M:%S").strftime("%y%m%d")
+            return datetime.strptime(value, "%Y:%m:%d %H:%M:%S").strftime("%y.%m.%d")
     except (OSError, UnidentifiedImageError, ValueError):
         pass
 
-    return datetime.fromtimestamp(path.stat().st_mtime).strftime("%y%m%d")
+    return datetime.fromtimestamp(path.stat().st_mtime).strftime("%y.%m.%d")
 
 
 def picture_number(path):
@@ -81,9 +85,10 @@ def move(source, destination, modify):
         destination.parent.mkdir(parents=True, exist_ok=True)
         source.rename(destination)
 
-def main(argv):
-    parser = argparse.ArgumentParser(description='Process some files.')
-    parser.add_argument('folder', type=str, help='Input dir for videos')
+def main(argv=None):
+    """Run the picture classifier from the command line."""
+    parser = argparse.ArgumentParser(description='Rename and classify pictures and videos.')
+    parser.add_argument('folder', type=str, help='Input directory')
     parser.add_argument('name')
     parser.add_argument('--modify', dest='dry_run', action='store_const',
                         const=False, default=True,
@@ -97,6 +102,7 @@ def main(argv):
     jpg_dir = source_dir / 'jpg'
     raw_dir = source_dir / 'raw'
     jpg_only_dir = source_dir / 'jpg_only'
+    video_dir = source_dir / 'videos'
     files = sorted(path for path in source_dir.iterdir() if path.is_file())
     raw_by_stem = {
         path.stem.casefold(): path
@@ -139,8 +145,20 @@ def main(argv):
         )
         move(raw, destination, not args.dry_run)
 
+    for video in files:
+        if video.suffix.casefold() not in VIDEO_EXTENSIONS:
+            continue
+
+        destination = unique_destination(
+            video_dir,
+            f"{date_taken(video)} - {picture_number(video)} - {args.name}",
+            video.suffix,
+            reserved_destinations,
+        )
+        move(video, destination, not args.dry_run)
+
     if args.dry_run:
         print("Dry run: no files were modified. Use --modify to apply these changes.")
 
 if __name__ == "__main__":
-   main(sys.argv[1:])
+    main()
