@@ -10,39 +10,78 @@ Writen by : Benoît Courty
 Licence : BSD 3
 '''
 
-import os
-import glob
-import re
 import sys
 import argparse
+import re
+from datetime import datetime
 from pathlib import Path
-from PIL import Image # For EXIF
+from PIL import Image, UnidentifiedImageError
 
 
+JPG_EXTENSIONS = {".jpg", ".jpeg"}
+RAW_EXTENSIONS = {
+    ".3fr", ".arw", ".cr2", ".cr3", ".dng", ".nef", ".orf", ".pef",
+    ".raf", ".raw", ".rw2", ".srw",
+}
 
-def rename_file(folder_list):
-    global dry_run
-    for folder in folder_list:
-        #print("jpg : ", f)
-        folder_name = os.path.basename(folder)
-        print(folder_name)
-        #print(matching_file)
-        file_list = [ name for name in os.listdir(folder) if not os.path.isdir(os.path.join(folder, name)) ]
-        for f in file_list:
-            file_name = os.path.splitext(f)[0]
-            ext = os.path.splitext(f)[1]
-            origin_file = os.path.join(folder_name, f)
-            destination_file = os.path.join(folder_name, file_name + ' - ' + folder_name + ext)
-            print(origin_file,'->', destination_file)
-            if not dry_run :
-                if not os.path.exists(destination_file):
-                    os.rename(origin_file, destination_file)
+
+def date_taken(path):
+    """Return the photo date, falling back to the file modification time."""
+    try:
+        with Image.open(path) as image:
+            exif = image.getexif()
+            value = exif.get(36867) or exif.get(306)  # DateTimeOriginal, DateTime
+        if value:
+            return datetime.strptime(value, "%Y:%m:%d %H:%M:%S").strftime("%y%m%d")
+    except (OSError, UnidentifiedImageError, ValueError):
+        pass
+
+    return datetime.fromtimestamp(path.stat().st_mtime).strftime("%y%m%d")
+
+
+def picture_number(path):
+    """Return the last five digits of the original camera filename."""
+    match = re.search(r"(\d{5})$", path.stem)
+    return match.group(1) if match else path.stem
+
+
+def unique_destination(directory, stem, extension, reserved_destinations):
+    """Build a destination that neither exists nor conflicts with this run."""
+    candidate = directory / f"{stem}{extension.lower()}"
+    suffix = 2
+    while candidate in reserved_destinations or candidate.exists():
+        candidate = directory / f"{stem} - {suffix}{extension.lower()}"
+        suffix += 1
+    reserved_destinations.add(candidate)
+    return candidate
+
+
+def unique_pair_destinations(jpg_dir, raw_dir, stem, jpg_extension, raw_extension,
+                             reserved_destinations):
+    """Build matching JPEG and RAW destinations without overwriting either file."""
+    suffix = 1
+    while True:
+        suffix_text = "" if suffix == 1 else f" - {suffix}"
+        jpg_destination = jpg_dir / f"{stem}{suffix_text}{jpg_extension.lower()}"
+        raw_destination = raw_dir / f"{stem}{suffix_text}{raw_extension.lower()}"
+        if (
+            jpg_destination not in reserved_destinations
+            and raw_destination not in reserved_destinations
+            and not jpg_destination.exists()
+            and not raw_destination.exists()
+        ):
+            reserved_destinations.update({jpg_destination, raw_destination})
+            return jpg_destination, raw_destination
+        suffix += 1
+
+
+def move(source, destination, modify):
+    print(f"{source} -> {destination}")
+    if modify:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(destination)
 
 def main(argv):
-    global dry_run
-    dry_run = True
-    #print('Reminder : Run in RAW folder !!!')
-
     parser = argparse.ArgumentParser(description='Process some files.')
     parser.add_argument('folder', type=str, help='Input dir for videos')
     parser.add_argument('name')
@@ -50,82 +89,58 @@ def main(argv):
                         const=False, default=True,
                         help='No dry run (default: no modification)')
 
-    args = parser.parse_args()
-    print(args.folder)
+    args = parser.parse_args(argv)
+    source_dir = Path(args.folder).resolve()
+    if not source_dir.is_dir():
+        parser.error(f"folder does not exist or is not a directory: {args.folder}")
 
+    jpg_dir = source_dir / 'jpg'
+    raw_dir = source_dir / 'raw'
+    jpg_only_dir = source_dir / 'jpg_only'
+    files = sorted(path for path in source_dir.iterdir() if path.is_file())
+    raw_by_stem = {
+        path.stem.casefold(): path
+        for path in files
+        if path.suffix.casefold() in RAW_EXTENSIONS
+    }
+    reserved_destinations = set()
 
-
-    oridir = os.path.realpath(os.path.join(args.folder))
-    jpg_dir = os.path.join(oridir, 'jpg')
-    raw_dir = os.path.join(oridir, 'raw')
-    jpg_only_dir = os.path.join(oridir, 'jpg_only')
-    Path(jpg_only_dir).mkdir(parents=True, exist_ok=True)
-
-    print("Looking into", oridir, " to rename in subfolders")
-    # file_list = [ name for name in os.listdir(jpgdir) if os.path.isdir(os.path.join(jpgdir, name)) ]
-    # folder_list = [folder for folder in folder_list if folder not in FOLDER_TO_IGNORE]
-    # print("# Scan the current folder to rename in subfolders")
-    # rename_file(folder_list)
-    # if dry_run :
-    #     print("--------------------------------------------------")
-    #     print("- WARNING : Dry run, no files has been touched ! -")
-    #     print("- Use '-r' switch to really rename file            -")
-    #     print("--------------------------------------------------")
-    # print("Done")
-    file_list = [ name for name in os.listdir(folder) if not os.path.isdir(os.path.join(folder, name)) ]
-    for file_ori in file_list:
-        # Mettre tout les fichiers en minuscules
-        file_dest = file_ori.lower()
-
-        print(file_ori,'->', file_dest)
-    
-        # Traite les photos
-        # retire les prefix inutile (DSC...)
-        # Get jpg exif (Thanks to https://github.com/matthewrenze/rename-images/blob/master/Rename.py)
-
-        # Get the file extension
-        file_ext = os.path.splitext(file_name)[1]
-
-        # If the file does not have a valid file extension
-        # then skip it
-        if (file_ext not in valid_extensions):
+    print(f"Looking into {source_dir} to classify and rename pictures")
+    for jpg in files:
+        if jpg.suffix.casefold() not in JPG_EXTENSIONS:
             continue
 
-        # Create the old file path
-        old_file_path = os.path.join(folder_path, file_name)
+        raw = raw_by_stem.pop(jpg.stem.casefold(), None)
+        stem = f"{date_taken(jpg)} - {picture_number(jpg)} - {args.name}"
+        if raw:
+            jpg_destination, raw_destination = unique_pair_destinations(
+                jpg_dir,
+                raw_dir,
+                stem,
+                jpg.suffix,
+                raw.suffix,
+                reserved_destinations,
+            )
+        else:
+            jpg_destination = unique_destination(
+                jpg_only_dir, stem, jpg.suffix, reserved_destinations
+            )
+        move(jpg, jpg_destination, not args.dry_run)
 
-        # Open the image
-        image = Image.open(old_file_path)
+        if raw:
+            move(raw, raw_destination, not args.dry_run)
 
-        # Get the date taken from EXIF metadata
-        date_taken = image._getexif()[36867]
+    for raw in raw_by_stem.values():
+        destination = unique_destination(
+            raw_dir,
+            f"{date_taken(raw)} - {picture_number(raw)} - {args.name}",
+            raw.suffix,
+            reserved_destinations,
+        )
+        move(raw, destination, not args.dry_run)
 
-        # Close the image
-        image.close()
-
-        # Reformat the date taken to "YYYYMMDD-HHmmss"
-        date_time = date_taken \
-            .replace(":", "")      \
-            .replace(" ", "-")
-
-        # Combine the new file name and file extension
-        new_file_name = date_time + file_ext
-
-        # Create the new folder path
-        new_file_path = os.path.join(folder_path, new_file_name)
-
-        # Rename the file
-        os.rename(old_file_path, new_file_path)
-
-        # rename RAW
-        # Move jpg_only
-        # Move jpg to "jpg_ori"
-        # Move raw
-
-        # Rename MP4 with filesystem date
-        # Move MP4 to "videos"
-
-        # exifautotran ?
+    if args.dry_run:
+        print("Dry run: no files were modified. Use --modify to apply these changes.")
 
 if __name__ == "__main__":
    main(sys.argv[1:])
