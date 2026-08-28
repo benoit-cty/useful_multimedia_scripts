@@ -12,7 +12,7 @@ renice +19 $PID
 DATA_LOCAL=/media/data
 BACKUP_DEST=/mnt/backup-benoit/backup-beal
 
-#DRY_RUN="--dry-run"
+# DRY_RUN="--dry-run"
 export RSYNC_RSH="ssh -A -J remote_backup_ssh"
 REMOTE_IP=`ssh remote_backup_ssh "sudo docker inspect cryptsetup_container" | grep IPAddress | grep -o '[0-9.]*' | head -n1`
 REMOTE_SSH="root@$REMOTE_IP"
