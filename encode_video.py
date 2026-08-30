@@ -15,6 +15,9 @@
 #  - --trash-dir to move originals aside instead of deleting them
 #  - videos already encoded by this script (metadata tag) or already in HEVC are skipped
 #  - --camera "DMC-G8" to only process videos from a given camera (needs exiftool)
+#  - the audio is levelled to -16 LUFS by default, but measured first and left
+#    untouched when it is silent (amplifying only hiss) or already on target;
+#    -B disables it entirely
 #
 # Tested under Ubuntu 22.04
 # You need FFMPEG :
@@ -25,6 +28,7 @@
 import os
 import re
 import sys
+import json
 import shutil
 import subprocess
 import tempfile
@@ -160,7 +164,62 @@ def verify_encoded_file(original_probe, encoded_file, decode_check=True) -> Tupl
     return True, f"OK (duration {encoded_duration:.1f}s)"
 
 
-def encode_one_video(video_file, output_file, quality, target_height=0, codec="hevc_nvenc"):
+def build_encode_command(video_file, output_file, quality, target_height, codec,
+                         audio_filter=None, audio_bitrate="128k", gpu_frames=True):
+    """Build the ffmpeg command line for one encode.
+
+    gpu_frames=True keeps the decoded frames in VRAM (NVDEC -> scale_cuda ->
+    NVENC) instead of copying them back and forth through system memory. Some
+    sources cannot be decoded by NVDEC (10-bit H.264 for instance), hence the
+    CPU-frames fallback in encode_one_video().
+    """
+    cmd = [FFMPEG_BIN, "-y", "-hide_banner", "-loglevel", "warning",
+           "-hwaccel", "cuda"]  # GPU decoding, falls back to CPU if unsupported
+    if gpu_frames:
+        # Keep the frames on the GPU between the decoder and the encoder
+        cmd += ["-hwaccel_output_format", "cuda"]
+    cmd += ["-i", video_file,
+            "-map", "0:v:0", "-map", "0:a?"]
+
+    if target_height:
+        # scale_cuda resizes the frames already in VRAM, no download/upload
+        scaler = "scale_cuda" if gpu_frames else "scale"
+        cmd += ["-vf", f"{scaler}=-2:{target_height}"]
+
+    quality = str(quality)
+    if codec == "h264_nvenc":
+        # No -qmin/-qmax: pinning them to the -cq value turns VBR into constant-QP,
+        # which ignores -maxrate and can make the output far bigger than the source.
+        cmd += ["-c:v", "h264_nvenc", "-rc", "vbr",
+                "-cq:v", quality,
+                "-b:v", "0", "-maxrate", "4M", "-bufsize", "6M", "-preset", "slow"]
+    elif codec == "hevc_nvenc":
+        # Higher maxrate for 4K sources so peaks are not starved
+        maxrate = "20M" if (target_height == 0 or target_height > 1200) else "8M"
+        # No -qmin/-qmax: pinning them to the -cq value turns VBR into constant-QP,
+        # which ignores -maxrate and can make the output far bigger than the source.
+        cmd += ["-c:v", "hevc_nvenc", "-profile:v", "main", "-rc", "vbr",
+                "-cq:v", quality,
+                "-b:v", "0", "-maxrate", maxrate, "-bufsize", maxrate,
+                "-preset", "slow", "-spatial_aq", "1", "-tag:v", "hvc1"]
+    else:
+        raise AttributeError(f"Unknown codec: {codec}")
+
+    if audio_filter:
+        # Audio is filtered in the same pass as the video encode, so the file
+        # is never rewritten a second time just to touch the sound
+        cmd += ["-af", audio_filter, "-c:a", "aac", "-b:a", audio_bitrate]
+    else:
+        cmd += ["-c:a", "aac", "-b:a", "128k"]
+
+    cmd += ["-map_metadata", "0",  # keep creation_time and other original tags
+            "-metadata", f"{ENCODER_TAG}={ENCODER_VALUE}",
+            output_file]
+    return cmd
+
+
+def encode_one_video(video_file, output_file, quality, target_height=0, codec="hevc_nvenc",
+                     audio_filter=None, audio_bitrate="128k", gpu_scale=False):
     """Encode a video file with the specified codec and quality.
 
     Args:
@@ -169,6 +228,9 @@ def encode_one_video(video_file, output_file, quality, target_height=0, codec="h
         quality: CQ value for encoding
         target_height: Target height, 0 to keep the original resolution
         codec: Codec to use (h264, hevc, h264_nvenc, hevc_nvenc)
+        audio_filter: Optional ffmpeg -af chain applied during this same pass
+        audio_bitrate: Audio bitrate used when audio_filter is set
+        gpu_scale: Resize on the GPU (scale_cuda) instead of the CPU scaler
 
     Returns:
         Output filename on success
@@ -178,44 +240,28 @@ def encode_one_video(video_file, output_file, quality, target_height=0, codec="h
     if codec == "hevc":
         codec = "hevc_nvenc"
 
-    cmd = [FFMPEG_BIN, "-y", "-hide_banner", "-loglevel", "warning",
-           "-hwaccel", "cuda",  # GPU decoding, falls back to CPU if unsupported
-           "-i", video_file,
-           "-map", "0:v:0", "-map", "0:a?"]
+    # Without downscaling, keeping the frames in VRAM produces a bit-identical
+    # file while avoiding every frame copy, so it is always worth it. With
+    # downscaling it also means using scale_cuda, which needs ~5% more bitrate
+    # than the CPU scaler for the same measured quality: opt-in only.
+    attempts = (True, False) if (not target_height or gpu_scale) else (False,)
+    for gpu_frames in attempts:
+        cmd = build_encode_command(video_file, output_file, quality, target_height, codec,
+                                   audio_filter=audio_filter, audio_bitrate=audio_bitrate,
+                                   gpu_frames=gpu_frames)
+        print('\tCommand:', ' '.join(cmd))
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True)
+        if result.returncode == 0:
+            if result.stdout or result.stderr:
+                print(result.stdout, result.stderr)
+            return output_file
 
-    if target_height:
-        cmd += ["-vf", f"scale=-2:{target_height}"]
-
-    quality = str(quality)
-    if codec == "h264_nvenc":
-        cmd += ["-c:v", "h264_nvenc", "-rc", "vbr",
-                "-cq:v", quality, "-qmin:v", quality, "-qmax:v", quality,
-                "-b:v", "0", "-maxrate", "4M", "-bufsize", "6M", "-preset", "slow"]
-    elif codec == "hevc_nvenc":
-        # Higher maxrate for 4K sources so peaks are not starved
-        maxrate = "20M" if (target_height == 0 or target_height > 1200) else "8M"
-        cmd += ["-c:v", "hevc_nvenc", "-profile:v", "main", "-rc", "vbr",
-                "-cq:v", quality, "-qmin:v", quality, "-qmax:v", quality,
-                "-b:v", "0", "-maxrate", maxrate, "-bufsize", maxrate,
-                "-preset", "slow", "-spatial_aq", "1", "-tag:v", "hvc1"]
-    else:
-        raise AttributeError(f"Unknown codec: {codec}")
-
-    cmd += ["-c:a", "aac", "-b:a", "128k",
-            "-map_metadata", "0",  # keep creation_time and other original tags
-            "-metadata", f"{ENCODER_TAG}={ENCODER_VALUE}",
-            output_file]
-
-    print('\tCommand:', ' '.join(cmd))
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            universal_newlines=True)
-    if result.stdout or result.stderr:
-        print(result.stdout, result.stderr)
-
-    if result.returncode != 0:
-        raise Exception(f"Encoding failed: {result.stderr}")
-
-    return output_file
+        if gpu_frames:
+            print("\tGPU frame pipeline failed, retrying with CPU frames "
+                  f"(this source may not be supported by NVDEC):\n{result.stderr.strip()[:500]}")
+        else:
+            raise Exception(f"Encoding failed: {result.stderr}")
 
 
 def normalize_audio_of_video(video_file, destination):
@@ -242,87 +288,86 @@ def normalize_audio_of_video(video_file, destination):
         raise Exception(f"Error : {stderr}")
 
 
-def boost_and_normalize_audio(video_file, destination, two_pass=False, target_loudness=-16, true_peak=-1.5, lra=11, bitrate="192k"):
-    """Boost and normalize audio using dynamic compression and EBU R128 loudness normalization
+AUDIO_COMPRESSOR = "acompressor=threshold=-20dB:ratio=3:attack=50:release=500"
+
+# Under this integrated loudness the track is essentially silence: a muted or
+# covered mic, a silent scene, nothing but the noise floor. Normalizing it
+# would only amplify the hiss, and the original is deleted afterwards, so the
+# audio is left alone instead.
+SILENCE_LOUDNESS = -40.0
+
+
+def measure_loudness(video_file, target_loudness=-16, true_peak=-1.5, lra=11) -> Optional[dict]:
+    """Measure the loudness of the audio track, compressor included.
+
+    The compressor is part of the analysis chain because loudnorm must measure
+    the signal it will actually receive, not the untouched original.
+    -vn keeps this cheap: decoding the video here would cost as much as the
+    encode itself for nothing.
+
+    Returns:
+        The loudnorm JSON measurements, or None if they could not be read.
+    """
+    analyze_filter = (f"{AUDIO_COMPRESSOR},"
+                      f"loudnorm=I={target_loudness}:TP={true_peak}:LRA={lra}:print_format=json")
+    analyze_cmd = [FFMPEG_BIN, "-hide_banner", "-i", video_file, "-vn",
+                   "-af", analyze_filter, "-f", "null", "-"]
+    result = subprocess.run(analyze_cmd, capture_output=True, universal_newlines=True)
+
+    # Extract JSON from stderr (ffmpeg outputs analysis there)
+    stderr = result.stderr
+    json_start = stderr.find('{')
+    json_end = stderr.rfind('}') + 1
+    if json_start == -1 or json_end <= json_start:
+        return None
+    try:
+        measured = json.loads(stderr[json_start:json_end])
+        float(measured['input_i'])  # also rejects a malformed measurement
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
+    return measured
+
+
+def build_audio_filter(video_file, target_loudness=-16, true_peak=-1.5, lra=11):
+    """Build the audio filter chain: dynamic compression + EBU R128 loudness normalization.
+
+    The chain is meant to be applied during the video encode itself (see
+    encode_one_video), so the file is only written once.
+
+    The track is measured first and left untouched when normalizing it would
+    do more harm than good: silence that would only be turned into loud hiss.
+    A track already at the target level is still processed, since the point of
+    this chain is also to even out the dynamics.
 
     Args:
-        video_file (str): Input video file path
-        destination (str): Output video file path
-        two_pass (bool): Use two-pass normalization for higher precision
+        video_file (str): Input video file
         target_loudness (int): Target integrated loudness (LUFS) - default -16 for streaming
         true_peak (float): Maximum true peak to avoid clipping - default -1.5
         lra (int): Loudness Range (lower = more consistent volume) - default 11
-        bitrate (str): Audio bitrate - default 192k
+
+    Returns:
+        str: the ffmpeg -af chain, or None to leave the audio alone
     """
-    import json
+    measured = measure_loudness(video_file, target_loudness=target_loudness,
+                                true_peak=true_peak, lra=lra)
+    if measured is None:
+        # Better to keep the audio as it is than to normalize blindly: the
+        # original is deleted once the encode is verified.
+        print("\tWarning: could not measure the audio loudness, leaving the audio untouched")
+        return None
 
-    # Audio filter chain: compression + loudness normalization
-    audio_filter = (
-        f"acompressor=threshold=-20dB:ratio=3:attack=50:release=500,"
-        f"loudnorm=I={target_loudness}:TP={true_peak}:LRA={lra}:print_format=summary"
-    )
+    measured_i = float(measured['input_i'])
+    if measured_i < SILENCE_LOUDNESS:
+        print(f"\tAudio is silent or near-silent ({measured_i:.1f} LUFS), leaving it untouched")
+        return None
 
-    if two_pass:
-        print("\tUsing two-pass audio normalization for higher precision...")
-
-        # First pass: analyze audio
-        analyze_filter = f"loudnorm=I={target_loudness}:TP={true_peak}:LRA={lra}:print_format=json"
-        analyze_cmd = f'/usr/bin/ffmpeg -hide_banner -i "{video_file}" -af "{analyze_filter}" -f null -'
-
-        print(f"\tFirst pass (analyzing): {analyze_cmd}")
-        process = subprocess.Popen(analyze_cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        universal_newlines=True,
-                        shell=True)
-        stdout, stderr = process.communicate()
-
-        # Extract JSON from stderr (ffmpeg outputs analysis there)
-        json_start = stderr.find('{')
-        json_end = stderr.rfind('}') + 1
-
-        if json_start != -1 and json_end != -1:
-            try:
-                json_data = json.loads(stderr[json_start:json_end])
-                measured_i = json_data.get('input_i', target_loudness)
-                measured_tp = json_data.get('input_tp', true_peak)
-                measured_lra = json_data.get('input_lra', lra)
-                measured_thresh = json_data.get('input_thresh', -30)
-
-                print(f"\tMeasured values: I={measured_i}, TP={measured_tp}, LRA={measured_lra}, Thresh={measured_thresh}")
-
-                # Second pass: apply normalization with measured values
-                audio_filter = (
-                    f"acompressor=threshold=-20dB:ratio=3:attack=50:release=500,"
-                    f"loudnorm=I={target_loudness}:TP={true_peak}:LRA={lra}:"
-                    f"measured_I={measured_i}:measured_TP={measured_tp}:measured_LRA={measured_lra}:"
-                    f"measured_thresh={measured_thresh}:linear=true"
-                )
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"\tWarning: Could not parse analysis data, falling back to single-pass: {e}")
-        else:
-            print("\tWarning: No analysis data found, falling back to single-pass")
-
-    # Build the final command
-    ffmpeg_cli = (
-        f'/usr/bin/ffmpeg -y -hide_banner -loglevel warning -i "{video_file}" '
-        f'-c:v copy -af "{audio_filter}" -c:a aac -b:a {bitrate} "{destination}"'
-    )
-
-    print(f"\tAudio normalization command: {ffmpeg_cli}")
-    process = subprocess.Popen(ffmpeg_cli,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    universal_newlines=True,
-                    shell=True)
-    stdout, stderr = process.communicate()
-
-    if process.returncode != 0:
-        print(f"Error normalizing audio: {stderr}")
-        raise Exception(f"Audio normalization failed: {stderr}")
-
-    print(f"\tAudio normalization completed: {destination}")
-    return destination
+    print(f"\tMeasured audio: I={measured['input_i']}, TP={measured['input_tp']}, "
+          f"LRA={measured['input_lra']}, Thresh={measured['input_thresh']}")
+    return (f"{AUDIO_COMPRESSOR},"
+            f"loudnorm=I={target_loudness}:TP={true_peak}:LRA={lra}:"
+            f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
+            f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
+            f"linear=true")
 
 
 def replace_original(video_file, encoded_file, final_output, trash_dir, root_dir):
@@ -361,10 +406,10 @@ def log_action(log_file, message):
 
 def process_videos(videos_files: List, video_output_size: int, codec: str,
                    normalize_audio=False, video_quality=None, boost_audio=False,
-                   two_pass_audio=False, target_loudness=-16, audio_bitrate="192k",
+                   target_loudness=-16, audio_bitrate="192k",
                    camera=None, dry_run=False, limit=0, confirm_first=0,
                    trash_dir=None, root_dir=".", min_reduction=10,
-                   decode_check=True, log_file=None):
+                   decode_check=True, log_file=None, gpu_scale=False):
     """Process videos to transcode them, replacing originals only after verification.
 
     Args:
@@ -373,7 +418,6 @@ def process_videos(videos_files: List, video_output_size: int, codec: str,
         codec (str): Codec to use
         normalize_audio (bool, optional): Normalize audio level using legacy method.
         boost_audio (bool, optional): Use advanced audio compression and EBU R128 normalization.
-        two_pass_audio (bool, optional): Use two-pass audio normalization.
         target_loudness (int, optional): Target integrated loudness (LUFS).
         audio_bitrate (str, optional): Audio bitrate for normalized audio.
         camera (str, optional): Only process files whose camera model contains this string.
@@ -385,6 +429,7 @@ def process_videos(videos_files: List, video_output_size: int, codec: str,
         min_reduction (int): Minimum size reduction in % required to replace the original.
         decode_check (bool): Fully decode encoded files to verify them before deleting originals.
         log_file (str, optional): Append a log of every action to this file.
+        gpu_scale (bool): Resize on the GPU (scale_cuda) instead of the CPU scaler.
     """
     if not videos_files:
         print("No videos found!")
@@ -424,6 +469,7 @@ def process_videos(videos_files: List, video_output_size: int, codec: str,
         if not video_streams:
             print("\tSkipping: no video stream")
             continue
+        has_audio = any(stream["codec_type"] == "audio" for stream in probe["streams"])
         codec_name = video_streams[0].get('codec_name')
         height = video_streams[0].get('height')
         if not height:
@@ -491,26 +537,34 @@ def process_videos(videos_files: List, video_output_size: int, codec: str,
 
         try:
             # Handle different audio processing options
-            if boost_audio or normalize_audio:
-                # Create temp file for audio normalization
+            scale_to = effective_output_size if effective_output_size < height else 0
+            if (boost_audio or normalize_audio) and not has_audio:
+                print("\tNo audio stream, skipping audio normalization")
+
+            if boost_audio and has_audio:
+                # The filter runs during the video encode itself: the file is
+                # written once instead of being fully rewritten for the audio
+                # and then read back for the video.
+                print(f"\tBoost and normalize audio with compression and EBU R128 (target: {target_loudness} LUFS)")
+                audio_filter = build_audio_filter(video_file, target_loudness=target_loudness)
+                encode_one_video(video_file, temp_output, auto_quality, scale_to, codec=codec,
+                                 audio_filter=audio_filter, audio_bitrate=audio_bitrate,
+                                 gpu_scale=gpu_scale)
+            elif normalize_audio and has_audio:
+                # Legacy path: ffmpeg-normalize writes its own intermediate file
                 temp_audio_fd, temp_audio_file = tempfile.mkstemp(suffix=base_ext, prefix=TEMP_PREFIX, dir=original_dir)
                 os.close(temp_audio_fd)
                 try:
-                    if boost_audio:
-                        print(f"\tBoost and normalize audio with compression and EBU R128 (target: {target_loudness} LUFS)")
-                        boost_and_normalize_audio(video_file, temp_audio_file, two_pass=two_pass_audio,
-                                                target_loudness=target_loudness, bitrate=audio_bitrate)
-                    else:
-                        print("\tNormalize sound level with ffmpeg-normalize (legacy method)")
-                        normalize_audio_of_video(video_file, temp_audio_file)
-                    encode_one_video(temp_audio_file, temp_output, auto_quality,
-                                     effective_output_size if effective_output_size < height else 0, codec=codec)
+                    print("\tNormalize sound level with ffmpeg-normalize (legacy method)")
+                    normalize_audio_of_video(video_file, temp_audio_file)
+                    encode_one_video(temp_audio_file, temp_output, auto_quality, scale_to,
+                                     codec=codec, gpu_scale=gpu_scale)
                 finally:
                     if os.path.exists(temp_audio_file):
                         os.remove(temp_audio_file)
             else:
-                encode_one_video(video_file, temp_output, auto_quality,
-                                 effective_output_size if effective_output_size < height else 0, codec=codec)
+                encode_one_video(video_file, temp_output, auto_quality, scale_to, codec=codec,
+                                 gpu_scale=gpu_scale)
 
             # Verify the encoded file BEFORE touching the original
             ok, verify_message = verify_encoded_file(probe, temp_output, decode_check=decode_check)
@@ -596,18 +650,19 @@ def process_videos(videos_files: List, video_output_size: int, codec: str,
 @click.option('--limit', default=0, type=int, help='Stop after N successful encodes (0 = no limit)')
 @click.option('--confirm-first', default=3, type=int, help='Ask for manual confirmation before replacing the first N originals (0 = fully automatic). Default: 3')
 @click.option('--trash-dir', default=None, type=click.Path(file_okay=False), help='Move originals to this directory instead of deleting them')
-@click.option('--min-reduction', default=10, type=int, help='Minimum size reduction in %% required to replace the original (default: 10)')
+@click.option('--min-reduction', default=10, type=int, help='Minimum size reduction in % required to replace the original (default: 10)')
 @click.option('--no-decode-check', is_flag=True, default=False, help='Skip the full decode verification of encoded files (faster but less safe)')
 @click.option('--no-recursive', is_flag=True, default=False, help='Do not scan subdirectories')
+@click.option('--gpu-scale', is_flag=True, default=False, help='Resize on the GPU (scale_cuda): frees the CPU but needs ~5% more bitrate for the same quality')
 @click.option('--log-file', default='encode_video.log', type=click.Path(dir_okay=False), help='Log every action to this file (default: encode_video.log)')
 @click.option('-n', '--normalize_audio', is_flag=True, help='Normalize audio level (legacy method)', default=False)
-@click.option('-b', '--boost_audio', is_flag=True, help='Boost and normalize audio with compression and EBU R128', default=False)
-@click.option('--two_pass_audio', is_flag=True, help='Use two-pass audio normalization for higher precision', default=False)
+@click.option('-b/-B', '--boost_audio/--no_boost_audio', default=True, help='Boost and normalize audio with compression and EBU R128 (default: on, skipped on silent or already-levelled tracks)')
+@click.option('--two_pass_audio', is_flag=True, default=False, help='Kept for compatibility: the loudness is always measured first, so normalization is already two-pass')
 @click.option('--target_loudness', default=-16, type=int, help='Target integrated loudness in LUFS (default: -16 for streaming)')
 @click.option('--audio_bitrate', default='192k', help='Audio bitrate for normalized audio (default: 192k)')
 def encode(directory, video_output_size, video_quality, codec, camera, dry_run, limit,
            confirm_first, trash_dir, min_reduction, no_decode_check, no_recursive, log_file,
-           normalize_audio, boost_audio, two_pass_audio, target_loudness, audio_bitrate):
+           gpu_scale, normalize_audio, boost_audio, two_pass_audio, target_loudness, audio_bitrate):
     """Encode all videos in DIRECTORY (recursively), replacing originals only
     after the encoded file has been verified.
 
@@ -622,19 +677,28 @@ def encode(directory, video_output_size, video_quality, codec, camera, dry_run, 
     3. Full run:       encode_video.py --camera DMC-G8 --confirm-first 0 /media/NAS-Photos
 
     Audio processing options:
-    - Use -n for legacy ffmpeg-normalize audio normalization
-    - Use -b for advanced audio compression + EBU R128 normalization
-    - Use --two_pass_audio with -b for highest quality audio normalization
+
+    \b
+    - Audio compression + EBU R128 normalization is on by default (-b). The
+      track is measured first and left untouched when it is silent or already
+      at the target level.
+    - Use -B / --no_boost_audio to keep the audio exactly as it is
+    - Use -n for legacy ffmpeg-normalize audio normalization instead
     - Adjust --target_loudness for different platforms (-16 for streaming, -23 for broadcast)
     """
     # Validate audio options
-    if normalize_audio and boost_audio:
-        click.echo("Warning: Both -n and -b specified. Using advanced boost audio (-b) method.")
-        normalize_audio = False
+    if two_pass_audio:
+        click.echo("Note: --two_pass_audio is now the default, the loudness is always measured first.")
 
-    if two_pass_audio and not boost_audio:
-        click.echo("Warning: --two_pass_audio requires --boost_audio (-b). Enabling boost audio.")
-        boost_audio = True
+    if normalize_audio and boost_audio:
+        boost_explicit = (click.get_current_context().get_parameter_source('boost_audio')
+                          is not click.core.ParameterSource.DEFAULT)
+        if boost_explicit:
+            click.echo("Warning: Both -n and -b specified. Using advanced boost audio (-b) method.")
+            normalize_audio = False
+        else:
+            # -n on its own asks for the legacy method, not for both
+            boost_audio = False
 
     if camera and shutil.which("exiftool") is None:
         click.echo("ERROR: --camera requires exiftool. Install it with: sudo apt install libimage-exiftool-perl")
@@ -663,13 +727,13 @@ def encode(directory, video_output_size, video_quality, codec, camera, dry_run, 
 
     process_videos(video_list, video_output_size, codec,
                    normalize_audio=normalize_audio, video_quality=video_quality,
-                   boost_audio=boost_audio, two_pass_audio=two_pass_audio,
+                   boost_audio=boost_audio,
                    target_loudness=target_loudness, audio_bitrate=audio_bitrate,
                    camera=camera, dry_run=dry_run, limit=limit,
                    confirm_first=0 if dry_run else confirm_first,
                    trash_dir=trash_dir, root_dir=directory,
                    min_reduction=min_reduction, decode_check=not no_decode_check,
-                   log_file=None if dry_run else log_file)
+                   log_file=None if dry_run else log_file, gpu_scale=gpu_scale)
     click.echo("Done")
 
 
